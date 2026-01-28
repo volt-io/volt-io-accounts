@@ -1,0 +1,31 @@
+openapi: 3.0.1
+info:
+  title: Global Api Accounts
+  version: 1.0.0
+  description: Common model definitions
+
+components:
+  schemas:
+    AccountIdentifier:
+      description: "A container for a single account identifier. Exactly one of the listed structures must be provided."
+      anyOf:
+        - $ref: '#/components/schemas/IbanSwiftIdentifier'
+        - $ref: '#/components/schemas/AccountNumberSortCodeIdentifier'
+    IbanSwiftIdentifier:
+      type: object
+      properties:
+        iban:
+          type: string
+          example: 'PL61109010140000071219812874'
+        swiftBic:
+          type: string
+          example: 'WBKPPLPP'
+    AccountNumberSortCodeIdentifier:
+      type: object
+      properties:
+        accountNumber:
+          type: string
+          example: '12345678'
+        sortCode:
+          type: string
+          example: '11-22-33'
