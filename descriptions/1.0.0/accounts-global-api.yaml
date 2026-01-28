@@ -332,10 +332,6 @@ paths:
       responses:
         '202':
           description: Accepted approval of account holder verification with the matching ID.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/VerificationLink'
         '400':
           $ref: '#/components/responses/400'
         '401':
@@ -374,10 +370,6 @@ paths:
       responses:
         '202':
           description: Accepted rejection request of account holder verification with the matching ID.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/VerificationLink'
         '400':
           $ref: '#/components/responses/400'
         '401':
@@ -512,12 +504,13 @@ paths:
           $ref: '#/components/responses/422'
         '500':
           $ref: '#/components/responses/500'
-    patch:
+  '/accounts/{accountId}/close':
+    post:
       tags:
         - Accounts
-      summary: Change state of account
-      operationId: change-account-state
-      description: Marks the specified individual named account as active or inactive.
+      summary: Close account
+      operationId: close-account
+      description: Immediately closes the specified account. A closed account cannot be reopened or used for further transactions. Only Named Accounts can be closed.
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
         - $ref: '#/components/parameters/XVoltApiVersion'
@@ -527,16 +520,10 @@ paths:
           schema:
             type: string
             format: uuid
-          description: Unique identifier of the account
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ChangeAccountStateRequest'
+          description: Unique identifier of the account to be closed.
       responses:
         '200':
-          description: Account successfully updated
+          description: Account successfully closed.
         '400':
           $ref: '#/components/responses/400'
         '401':
@@ -659,6 +646,24 @@ paths:
           description: Find only active/inactive trusted accounts.
           schema:
             type: boolean
+        - name: accountHolderEntityIds
+          description: Find trusted accounts for specific account holder entity
+          in: query
+          required: false
+          schema:
+            type: array
+            minItems: 1
+            items:
+              $ref: '#/components/schemas/AccountHolderEntityId'
+        - name: groups
+          description: Find trusted accounts for specific group
+          in: query
+          required: false
+          schema:
+            type: array
+            minItems: 0
+            items:
+              $ref: '#/components/schemas/TrustedAccountCustomerGroup'
       responses:
         '200':
           description: Retrieve trusted accounts list.
@@ -710,7 +715,7 @@ paths:
               onboardingEntityId: a1b2c3d4-5678-90ab-cdef-1234567890ab
               currency: EUR
               communication:
-                notification:
+                notifications:
                   url: 'https://mywebsite.com/webhooks'
       responses:
         '202':
@@ -835,6 +840,39 @@ paths:
           $ref: '#/components/responses/422'
         '500':
           $ref: '#/components/responses/500'
+  '/transactions/{id}/reverse':
+    post:
+      summary: Trigger a reversal for an incoming transaction
+      description: |
+        Simulates a banking provider reversal notification for the specified incoming transaction. Only available in the sandbox environment.
+      servers:
+        - url: 'https://accounts.sandbox.volt.io'
+          description: Sandbox
+      operationId: reverse-incoming-transaction
+      tags:
+        - Sandbox
+      parameters:
+        - $ref: '#/components/parameters/XVoltApiVersion'
+        - name: id
+          in: path
+          required: true
+          description: ID of the incoming transaction to reverse.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '202':
+          description: Reversal successfully triggered.
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '422':
+          $ref: '#/components/responses/422'
+        '500':
+          $ref: '#/components/responses/500'
 components:
   securitySchemes:
     BearerAuth:
@@ -843,7 +881,7 @@ components:
       bearerFormat: JWT
   schemas:
     #
-    # Sandbox respose objects schemas
+    # Sandbox response objects schemas
     #
     SimulatedIncomingTransaction:
       type: object
@@ -860,15 +898,21 @@ components:
           description: Unique identifier for the transaction.
           example: a1b2c3d4-e5f6-7890-1234-567890abcdef
         paymentReference:
-          type: string
-          description: Reference assigned by the processing system.
-          example: TXNREF-20251001-XYZ-987
+          $ref: '#/components/schemas/PaymentReference'
         beneficiary:
           $ref: '#/components/schemas/SimulatedBeneficiary'
         sender:
           $ref: '#/components/schemas/SimulatedSender'
         amount:
-          $ref: '#/components/schemas/Amount'
+          type: object
+          required:
+            - amount
+            - currency
+          properties:
+            amount:
+              $ref: '#/components/schemas/Amount'
+            currency:
+              $ref: '#/components/schemas/CurrencyCode'
     SimulatedBeneficiary:
       type: object
       required:
@@ -886,23 +930,11 @@ components:
         accountIdentifiers:
           $ref: "accounts-common.yaml#/components/schemas/AccountIdentifier"
     Amount:
-      type: object
-      required:
-        - amount
-        - currency
-      properties:
-        amount:
-          type: integer
-          format: int64
-          minimum: 0
-          exclusiveMinimum: true
-          description: The transaction amount.
-          example: 123
-        currency:
-          type: string
-          description: Three-letter ISO 4217 currency code.
-          example: PLN
-          pattern: '^[A-Z]{3}$'
+      type: integer
+      format: int64
+      minimum: 1
+      description: The total value of the transaction represented in minor units (e.g. 100 for 1.00 EUR). Must be a positive integer.
+      example: 123
     #
     # Main response objects schemas
     #
@@ -934,6 +966,8 @@ components:
         active:
           type: boolean
           description: Boolean flag indicating if the account is currently enabled for processing transactions.
+        status:
+          $ref: '#/components/schemas/AccountStatusEnum'
         country:
           $ref: '#/components/schemas/CountryCode'
         balance:
@@ -978,16 +1012,11 @@ components:
           format: date-time
           description: The timestamp of the last status update (ISO 8601).
         amount:
-          type: integer
-          format: int64
-          minimum: 1
-          description: 'The total value of the transaction represented in minor units (e.g., 100 for 1.00 EUR). Must be a positive integer.'
+          $ref: '#/components/schemas/Amount'
         currency:
           $ref: '#/components/schemas/CurrencyCode'
         paymentReference:
-          type: string
-          maxLength: 35
-          description: 'The reconciliation reference that appears on the bank statement. This is crucial for matching the transaction with external banking records. Maximum length: 35 (EU) or 18 (UK).'
+          $ref: '#/components/schemas/PaymentReference'
         internalReference:
           $ref: '#/components/schemas/InternalReference'
         paymentRail:
@@ -1086,6 +1115,12 @@ components:
         active:
           type: boolean
           description: Boolean flag indicating if the trusted account is currently enabled for processing transactions.
+    PaymentReference:
+      type: string
+      pattern: '^(?=.*\S)[a-zA-Z0-9\/\-?:().,''+ ]*$'
+      minLength: 1
+      maxLength: 35
+      description: 'The reconciliation reference that appears on the bank statement. This is crucial for matching the transaction with external banking records. Maximum length: 35 (EU) or 18 (UK).'
     NamedAccountOrderDetails:
       type: object
       description: Named account order status and details.
@@ -1132,18 +1167,11 @@ components:
           type: string
           description: Must be set to PAYOUT.
         amount:
-          type: integer
-          format: int64
-          minimum: 1
-          description: 'The total value of the transaction represented in minor units (e.g., 100 for 1.00 EUR). Must be a positive integer.'
-          example: 123
+          $ref: '#/components/schemas/Amount'
         currency:
           $ref: '#/components/schemas/CurrencyCode'
         paymentReference:
-          type: string
-          pattern: '^[a-zA-Z0-9\/\-?:().''+ ]*$'
-          maxLength: 35
-          description: 'The reconciliation reference that appears on the bank statement. This is crucial for matching the transaction with external banking records. Maximum length: 35 (EU) or 18 (UK).'
+          $ref: '#/components/schemas/PaymentReference'
         internalReference:
           $ref: '#/components/schemas/InternalReference'
         beneficiary:
@@ -1163,18 +1191,11 @@ components:
           type: string
           description: Must be set to INTERNAL.
         amount:
-          type: integer
-          format: int64
-          minimum: 1
-          description: 'The total value of the transaction represented in minor units (e.g., 100 for 1.00 EUR). Must be a positive integer.'
-          example: 123
+          $ref: '#/components/schemas/Amount'
         currency:
           $ref: '#/components/schemas/CurrencyCode'
         paymentReference:
-          type: string
-          pattern: '^[a-zA-Z0-9\/\-?:().''+ ]*$'
-          maxLength: 35
-          description: 'The reconciliation reference that appears on the bank statement. This is crucial for matching the transaction with external banking records. Maximum length: 35 (EU) or 18 (UK).'
+          $ref: '#/components/schemas/PaymentReference'
         internalReference:
           $ref: '#/components/schemas/InternalReference'
         beneficiary:
@@ -1201,31 +1222,17 @@ components:
         type:
           type: string
         amount:
-          type: integer
-          format: int64
-          minimum: 1
-          description: The total value of the transaction represented in minor units (e.g. 100 for 1.00 EUR). Must be a positive integer.
-          example: 123
+          $ref: '#/components/schemas/Amount'
         currency:
           $ref: '#/components/schemas/CurrencyCode'
         paymentReference:
-          type: string
-          pattern: '^[a-zA-Z0-9\/\-?:().''+ ]*$'
-          maxLength: 35
-          description: 'The reconciliation reference that appears on the bank statement. This is crucial for matching the transaction with external banking records. Maximum length: 35 (EU) or 18 (UK).'
+          $ref: '#/components/schemas/PaymentReference'
         internalReference:
           $ref: '#/components/schemas/InternalReference'
         beneficiary:
           $ref: '#/components/schemas/OutgoingTransactionRequestBeneficiaryTrustedAccount'
         communication:
           $ref: '#/components/schemas/Communication'
-    ChangeAccountStateRequest:
-      type: object
-      properties:
-        active:
-          type: boolean
-      required:
-        - active
     NamedAccountOrderRequest:
       type: object
       description: Request to create a named account from an approved onboarding.
@@ -1322,6 +1329,7 @@ components:
         - MANUAL_CREDIT
         - TOP_UP
         - BOUNCE_BACK
+        - REVERSAL
     TransactionSubTypeEnum:
       type: string
       enum:
@@ -1435,6 +1443,13 @@ components:
       enum:
         - BUSINESS
         - INDIVIDUAL
+    AccountStatusEnum:
+      type: string
+      description: The current status of the account.
+      enum:
+        - ACTIVE
+        - SUSPENDED
+        - CLOSED
     AccountBalance:
       type: object
       description: The account balance in minor units.
@@ -1448,18 +1463,24 @@ components:
     AccountHolderMinimalDetails:
       type: object
       required:
+        - entityId
         - legalName
       properties:
+        entityId:
+          $ref: '#/components/schemas/AccountHolderEntityId'
         legalName:
           type: string
           description: Full name or legal entity name of the account holder as registered with the bank.
     AccountHolder:
       type: object
       required:
+        - entityId
         - legalName
         - address
         - beneficiaries
       properties:
+        entityId:
+          $ref: '#/components/schemas/AccountHolderEntityId'
         legalName:
           type: string
           description: Full name or legal entity name of the account holder as registered with the bank.
@@ -1484,12 +1505,20 @@ components:
         lastName:
           type: string
           description: Last name of ultimate beneficial owner.
+    AccountHolderEntityId:
+      type: string
+      format: uuid
+      description: |
+        The unique identifier of the account holder entity depends on the entity type:
+        * Volt Business Customer: customer identifier
+        * Merchant Clients (Business/Individual): unique identifier issued during the client onboarding process
+      example: 40bb9716-fb00-484e-b4a2-eb3a220b3906
     Communication:
       type: object
       properties:
-        notification:
+        notifications:
           type: object
-          description: Settings for webhook notification delivery.
+          description: Settings for webhook notifications delivery.
           properties:
             url:
               type: string
@@ -1500,18 +1529,19 @@ components:
       type: object
       required:
         - name
-        - address
         - accountIdentifiers
       properties:
         name:
           type: string
           description: The name of the beneficiary.
+          minLength: 1
           maxLength: 35
-          pattern: '^[a-zA-Z0-9\/\-?:().,''+ ]*$'
+          pattern: '^(?=.*\S)[a-zA-Z0-9\/\-?:().,''+ ]*$'
         email:
           type: string
           description: The email address of the beneficiary.
           format: email
+          pattern: '^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$'
         accountIdentifiers:
           $ref: "accounts-common.yaml#/components/schemas/AccountIdentifier"
         address:
@@ -1530,7 +1560,7 @@ components:
             addressLine2:
               type: string
               maxLength: 35
-              pattern: '^(?! *$)(?!.*\/\/)(?![:\-\/])[0-9A-Za-z\/\-?:().,''+_ ]+(?<!\/)$'
+              pattern: '^(?:[0-9A-Za-z\/\-?:().,''+_ ]*(?<!\/))?$'
               description: 'Additional address details such as suite, apartment number, or floor level.'
             city:
               type: string
@@ -1548,7 +1578,6 @@ components:
       type: object
       required:
         - trustedAccountId
-        - address
       properties:
         trustedAccountId:
           type: string
@@ -1567,7 +1596,9 @@ components:
       properties:
         self:
           $ref: '#/components/schemas/LinkObject'
-        reversal:
+        reversalOf:
+          $ref: '#/components/schemas/LinkObject'
+        reversedBy:
           $ref: '#/components/schemas/LinkObject'
         gatewayPayment:
           $ref: '#/components/schemas/LinkObject'
@@ -1610,7 +1641,7 @@ components:
     InternalReference:
       type: string
       maxLength: 100
-      pattern: '^[a-zA-Z0-9\!\@\#\$\%\^\&\*\(\)\_\+\=\{\[\]\}\;\:\?\|\-]*$'
+      pattern: '^[a-zA-Z0-9!@#$%^&*()_+={\[\]};:?|\-]*$'
       description: Unique identifier of the transaction in the partner's system. Useful for automated reconciliation and logging.
       nullable: true
     NamedAccountOrderStatusEnum:
@@ -1620,6 +1651,14 @@ components:
         - PROCESSING
         - COMPLETED
         - FAILED
+    TrustedAccountCustomerGroup:
+      type: string
+      enum:
+        - CUSTOMERS
+        - CUSTOMER_INDIVIDUAL_CLIENTS
+      description: |
+        * `CUSTOMERS` - List direct trusted accounts of customers in the hierarchy
+        * `CUSTOMER_INDIVIDUAL_CLIENTS` - List trusted accounts of merchant individual clients only
     XVoltTestingScenario:
       type: string
       enum:
@@ -1924,7 +1963,7 @@ components:
             postalCode: '12332'
             country: DE
         communication:
-          notification:
+          notifications:
             url: 'https://mywebsite.com/webhooks'
     PayoutRequestGBPExample:
       value:
@@ -1947,7 +1986,7 @@ components:
             postalCode: '12332'
             country: GB
         communication:
-          notification:
+          notifications:
             url: 'https://mywebsite.com/webhooks'
     SettlementRequestEURExample:
       value:
@@ -1959,7 +1998,7 @@ components:
         beneficiary:
           trustedAccountId: efffed42-40f7-4bd2-840d-908aae9a33ad
         communication:
-          notification:
+          notifications:
             url: 'https://mywebsite.com/webhooks'
     InternalRequestEURExample:
       value:
@@ -1971,7 +2010,7 @@ components:
         beneficiary:
           accountId: 998275d3-70a9-4448-822a-ba1a38e0b715
         communication:
-          notification:
+          notifications:
             url: 'https://mywebsite.com/webhooks'
     NamedAccountOrderProcessingExample:
       value:
