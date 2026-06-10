@@ -6,6 +6,12 @@ info:
 
 components:
   schemas:
+    Amount:
+      type: integer
+      format: int64
+      minimum: 1
+      description: 'The total value of the transaction represented in minor units (e.g. 100 for 1.00 EUR). Must be a positive integer.'
+      example: 123
     AccountIdentifier:
       description: "A container for a single account identifier. Exactly one of the listed structures must be provided."
       anyOf:
@@ -19,6 +25,7 @@ components:
           example: 'PL61109010140000071219812874'
         swiftBic:
           type: string
+          description: valid BIC
           example: 'WBKPPLPP'
     AccountNumberSortCodeIdentifier:
       type: object

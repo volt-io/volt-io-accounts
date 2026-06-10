@@ -99,6 +99,13 @@ paths:
             format: uuid
             example: 2f5e48b7-235a-4ba4-ad10-8aa981a73d03
         - in: query
+          name: aliasId
+          description: Filter transactions by alias UUID.
+          schema:
+            type: string
+            format: uuid
+            example: f47ac10b-58cc-4372-a567-0e02b2c3d479
+        - in: query
           name: 'order[createdAt]'
           description: Sort order by createdAt field (desc by default).
           schema:
@@ -211,17 +218,19 @@ paths:
               properties:
                 type:
                   type: string
-                  description: 'The transaction type discriminator (PAYOUT, SETTLEMENT, or INTERNAL).'
+                  description: 'The transaction type discriminator (PAYOUT, SETTLEMENT, INTERNAL, or REFUND).'
               oneOf:
                 - $ref: '#/components/schemas/SettlementTransactionRequest'
                 - $ref: '#/components/schemas/PayoutTransactionRequest'
                 - $ref: '#/components/schemas/InternalTransactionRequest'
+                - $ref: '#/components/schemas/RefundTransactionRequest'
               discriminator:
                 propertyName: type
                 mapping:
                   PAYOUT: '#/components/schemas/PayoutTransactionRequest'
                   SETTLEMENT: '#/components/schemas/SettlementTransactionRequest'
                   INTERNAL: '#/components/schemas/InternalTransactionRequest'
+                  REFUND: '#/components/schemas/RefundTransactionRequest'
             examples:
               payoutRequestEURExample:
                 $ref: '#/components/examples/PayoutRequestEURExample'
@@ -231,6 +240,8 @@ paths:
                 $ref: '#/components/examples/SettlementRequestEURExample'
               internalRequestEURExample:
                 $ref: '#/components/examples/InternalRequestEURExample'
+              refundRequestExample:
+                $ref: '#/components/examples/RefundRequestExample'
       responses:
         '201':
           description: Transaction created successfully.
@@ -521,6 +532,12 @@ paths:
             type: string
             format: uuid
           description: Unique identifier of the account to be closed.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccountCloseRequest'
       responses:
         '200':
           description: Account successfully closed.
@@ -910,7 +927,7 @@ components:
             - currency
           properties:
             amount:
-              $ref: '#/components/schemas/Amount'
+              $ref: "accounts-common.yaml#/components/schemas/Amount"
             currency:
               $ref: '#/components/schemas/CurrencyCode'
     SimulatedBeneficiary:
@@ -929,12 +946,6 @@ components:
           type: string
         accountIdentifiers:
           $ref: "accounts-common.yaml#/components/schemas/AccountIdentifier"
-    Amount:
-      type: integer
-      format: int64
-      minimum: 1
-      description: The total value of the transaction represented in minor units (e.g. 100 for 1.00 EUR). Must be a positive integer.
-      example: 123
     #
     # Main response objects schemas
     #
@@ -1012,7 +1023,7 @@ components:
           format: date-time
           description: The timestamp of the last status update (ISO 8601).
         amount:
-          $ref: '#/components/schemas/Amount'
+          $ref: "accounts-common.yaml#/components/schemas/Amount"
         currency:
           $ref: '#/components/schemas/CurrencyCode'
         paymentReference:
@@ -1167,7 +1178,7 @@ components:
           type: string
           description: Must be set to PAYOUT.
         amount:
-          $ref: '#/components/schemas/Amount'
+          $ref: "accounts-common.yaml#/components/schemas/Amount"
         currency:
           $ref: '#/components/schemas/CurrencyCode'
         paymentReference:
@@ -1191,7 +1202,7 @@ components:
           type: string
           description: Must be set to INTERNAL.
         amount:
-          $ref: '#/components/schemas/Amount'
+          $ref: "accounts-common.yaml#/components/schemas/Amount"
         currency:
           $ref: '#/components/schemas/CurrencyCode'
         paymentReference:
@@ -1210,6 +1221,31 @@ components:
               description: Target internal account ID.
         communication:
           $ref: '#/components/schemas/Communication'
+    RefundTransactionRequest:
+      type: object
+      required:
+        - type
+        - sourceTransactionId
+        - amount
+        - currency
+      properties:
+        type:
+          type: string
+          description: Must be set to REFUND.
+        sourceTransactionId:
+          type: string
+          format: uuid
+          description: The ID of the incoming transaction to refund.
+        amount:
+          $ref: "accounts-common.yaml#/components/schemas/Amount"
+        currency:
+          $ref: '#/components/schemas/CurrencyCode'
+        paymentReference:
+          $ref: '#/components/schemas/PaymentReference'
+        internalReference:
+          $ref: '#/components/schemas/InternalReference'
+        communication:
+          $ref: '#/components/schemas/Communication'
     SettlementTransactionRequest:
       type: object
       required:
@@ -1222,7 +1258,7 @@ components:
         type:
           type: string
         amount:
-          $ref: '#/components/schemas/Amount'
+          $ref: "accounts-common.yaml#/components/schemas/Amount"
         currency:
           $ref: '#/components/schemas/CurrencyCode'
         paymentReference:
@@ -1513,6 +1549,11 @@ components:
         * Volt Business Customer: customer identifier
         * Merchant Clients (Business/Individual): unique identifier issued during the client onboarding process
       example: 40bb9716-fb00-484e-b4a2-eb3a220b3906
+    AccountCloseRequest:
+      type: object
+      properties:
+        communication:
+          $ref: '#/components/schemas/Communication'
     Communication:
       type: object
       properties:
@@ -1600,6 +1641,10 @@ components:
           $ref: '#/components/schemas/LinkObject'
         reversedBy:
           $ref: '#/components/schemas/LinkObject'
+        refundOf:
+          $ref: '#/components/schemas/LinkObject'
+        refundedBy:
+          $ref: '#/components/schemas/LinkObjectArray'
         gatewayPayment:
           $ref: '#/components/schemas/LinkObject'
         correspondingInternal:
@@ -1607,6 +1652,11 @@ components:
         accountHolderVerification:
           $ref: '#/components/schemas/LinkObject'
       additionalProperties: false
+    LinkObjectArray:
+      type: array
+      description: List of links
+      items:
+        $ref: '#/components/schemas/LinkObject'
     LinkObject:
       type: object
       properties:
@@ -1668,6 +1718,7 @@ components:
         - ACCOUNT_HOLDER_VERIFICATION_ERROR
         - ONBOARDING_REJECTED
         - ONBOARDING_ADDITIONAL_INFO_REQUIRED
+        - ONBOARDING_ADDITIONAL_INFO_REQUIRED_NAME_MISMATCH
         - ONBOARDING_EXPIRED
         - ORDER_NAMED_ACCOUNTS_FAILED
       #
@@ -2009,6 +2060,17 @@ components:
         internalReference: LIQUIDITY-MOVE-2025
         beneficiary:
           accountId: 998275d3-70a9-4448-822a-ba1a38e0b715
+        communication:
+          notifications:
+            url: 'https://mywebsite.com/webhooks'
+    RefundRequestExample:
+      value:
+        type: REFUND
+        sourceTransactionId: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+        amount: 1000
+        currency: EUR
+        paymentReference: Refund-Order-42
+        internalReference: REFUND-INT-01
         communication:
           notifications:
             url: 'https://mywebsite.com/webhooks'
