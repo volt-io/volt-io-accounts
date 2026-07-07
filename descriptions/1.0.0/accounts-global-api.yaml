@@ -32,6 +32,8 @@ tags:
     description: 'Operations related to movement of funds, including payouts, settlements, and internal transactions.'
   - name: Accounts
     description: Management of accounts.
+  - name: Aliases
+    description: Issuance and management of account aliases for global reconciliation.
   - name: Account Holder Verification
     description: Verification services for ensuring beneficiary account ownership.
   - name: Trusted accounts
@@ -99,12 +101,38 @@ paths:
             format: uuid
             example: 2f5e48b7-235a-4ba4-ad10-8aa981a73d03
         - in: query
+          name: sourceTransactionId
+          description: Filter by source transaction id (e.g. for refunds).
+          schema:
+            type: string
+            format: uuid
+            example: 2f5e48b7-235a-4ba4-ad10-8aa981a73d03
+        - in: query
           name: aliasId
           description: Filter transactions by alias UUID.
           schema:
             type: string
             format: uuid
             example: f47ac10b-58cc-4372-a567-0e02b2c3d479
+        - in: query
+          name: gatewayPaymentId
+          description: Filter transactions by linked gateway payment UUID.
+          schema:
+            type: string
+            format: uuid
+            example: f47ac10b-58cc-4372-a567-0e02b2c3d479
+        - in: query
+          name: iban
+          description: 'Filter by exact IBAN. Matches the beneficiary, beneficiary alias or sender identification.'
+          schema:
+            type: string
+            example: DE07500105176551562526
+        - in: query
+          name: accountNumber
+          description: 'Filter by exact account number. Matches the beneficiary, beneficiary alias or sender identification.'
+          schema:
+            type: string
+            example: '12345678'
         - in: query
           name: 'order[createdAt]'
           description: Sort order by createdAt field (desc by default).
@@ -645,6 +673,304 @@ paths:
         '500':
           $ref: '#/components/responses/500'
   #
+  # Operations related to Aliases
+  #
+  '/accounts/{accountId}/aliases':
+    get:
+      tags:
+        - Aliases
+      summary: List of aliases for an account
+      operationId: get-aliases
+      parameters:
+        - $ref: '#/components/parameters/XVoltApiVersion'
+        - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/PageParam'
+        - name: accountId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Unique identifier of the account
+        - name: orderId
+          in: query
+          description: Filter aliases by the order id they were created with.
+          required: false
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: List of aliases for the account
+          headers:
+            limit:
+              $ref: '#/components/headers/PaginationLimit'
+            page:
+              $ref: '#/components/headers/PaginationPage'
+            page-count:
+              $ref: '#/components/headers/PaginationPageCount'
+            total-items:
+              $ref: '#/components/headers/PaginationTotalItems'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AliasMinimalDetails'
+              example:
+                - id: 06949674-d65c-4266-a2c6-23bce4a80a81
+                  currency: EUR
+                  identifications:
+                    - iban: DE33500105173822933531
+                      bic: ALBPPLPW
+                  name: Virtual account
+                  customerId: dab4dd0c-d63b-439c-9c47-722ce7a01b60
+                  accountId: ca52ea87-a0e3-4371-b301-63309d2e0aa3
+                  active: true
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '405':
+          $ref: '#/components/responses/405'
+        '406':
+          $ref: '#/components/responses/406'
+        '415':
+          $ref: '#/components/responses/415'
+        '422':
+          $ref: '#/components/responses/422'
+        '500':
+          $ref: '#/components/responses/500'
+  /orders/account-aliases:
+    post:
+      tags:
+        - Aliases
+      operationId: order-aliases
+      summary: Order aliases
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/XVoltApiVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AliasesOrderRequest'
+      responses:
+        '201':
+          description: Order for issuing account aliases created successfully.
+          headers:
+            Location:
+              schema:
+                type: string
+                format: uri
+              description: Location of created aliases order.
+          content:
+            application/json:
+              schema:
+                type: object
+                description: Response containing the identifier of the created aliases order.
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                    description: Unique ID of the aliases order.
+                    example: 57ad1a6b-95ac-4b33-8c92-311cda8f3c99
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '405':
+          $ref: '#/components/responses/405'
+        '406':
+          $ref: '#/components/responses/406'
+        '409':
+          $ref: '#/components/responses/409'
+        '415':
+          $ref: '#/components/responses/415'
+        '422':
+          $ref: '#/components/responses/422'
+        '500':
+          $ref: '#/components/responses/500'
+  '/orders/account-aliases/{id}':
+    get:
+      tags:
+        - Aliases
+      operationId: get-alias-order-status
+      summary: Get alias order status
+      parameters:
+        - $ref: '#/components/parameters/XVoltApiVersion'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Unique identifier of the alias order
+      responses:
+        '200':
+          description: Alias order details retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AliasOrderDetails'
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '500':
+          $ref: '#/components/responses/500'
+  '/account-aliases/{aliasId}':
+    get:
+      tags:
+        - Aliases
+      summary: Get alias details
+      operationId: get-alias-details
+      parameters:
+        - $ref: '#/components/parameters/XVoltApiVersion'
+        - name: aliasId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Unique identifier of the alias
+      responses:
+        '200':
+          description: Details of alias
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AliasDetails'
+              example:
+                id: 06949674-d65c-4266-a2c6-23bce4a80a81
+                currency: EUR
+                identifications:
+                  - iban: DE33500105173822933531
+                    bic: ALBPPLPW
+                name: Virtual account
+                customerId: dab4dd0c-d63b-439c-9c47-722ce7a01b60
+                accountId: ca52ea87-a0e3-4371-b301-63309d2e0aa3
+                orderId: 22cb500c-fe26-47ec-bd62-2023d674a8e3
+                active: true
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '405':
+          $ref: '#/components/responses/405'
+        '406':
+          $ref: '#/components/responses/406'
+        '415':
+          $ref: '#/components/responses/415'
+        '422':
+          $ref: '#/components/responses/422'
+        '500':
+          $ref: '#/components/responses/500'
+    patch:
+      tags:
+        - Aliases
+      summary: Change state of alias
+      operationId: change-alias-state
+      description: Marks the specified alias as active or inactive.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/XVoltApiVersion'
+        - name: aliasId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Unique identifier of the alias
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangeAliasStateRequest'
+      responses:
+        '200':
+          description: alias successfully updated
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '405':
+          $ref: '#/components/responses/405'
+        '406':
+          $ref: '#/components/responses/406'
+        '409':
+          $ref: '#/components/responses/409'
+        '415':
+          $ref: '#/components/responses/415'
+        '422':
+          $ref: '#/components/responses/422'
+        '500':
+          $ref: '#/components/responses/500'
+  '/account-aliases/{aliasId}/close':
+    post:
+      tags:
+        - Aliases
+      summary: Close alias
+      operationId: close-alias
+      description: Permanently closes the specified alias. A closed alias cannot be reopened or used for further transactions.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/XVoltApiVersion'
+        - name: aliasId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Unique identifier of the alias to be closed.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AliasCloseRequest'
+      responses:
+        '200':
+          description: Alias successfully closed.
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          $ref: '#/components/responses/403'
+        '404':
+          $ref: '#/components/responses/404'
+        '409':
+          $ref: '#/components/responses/409'
+        '415':
+          $ref: '#/components/responses/415'
+        '422':
+          $ref: '#/components/responses/422'
+        '500':
+          $ref: '#/components/responses/500'
+  #
   # Operations related to Trusted Accounts
   #
   /trusted-accounts:
@@ -1040,6 +1366,16 @@ components:
           $ref: '#/components/schemas/Sender'
         initiatedBy:
           $ref: '#/components/schemas/InitiatedBy'
+        gatewayPaymentId:
+          type: string
+          format: uuid
+          nullable: true
+          description: 'UUID of the linked gateway payment, if transaction was matched with a Volt Connect payment.'
+        sourceTransactionId:
+          type: string
+          format: uuid
+          nullable: true
+          description: 'UUID of the source transaction (e.g. the original transaction being refunded, reversed, or returned).'
         decisions:
           type: array
           items:
@@ -1052,6 +1388,40 @@ components:
               allOf:
                 - $ref: '#/components/schemas/AccountHolderVerification'
               nullable: true
+    AliasDetails:
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/AliasMinimalDetails'
+        - type: object
+          properties:
+            _links:
+              type: object
+              properties:
+                self:
+                  $ref: '#/components/schemas/LinkObject'
+    AliasMinimalDetails:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        currency:
+          $ref: '#/components/schemas/CurrencyCode'
+        identifications:
+          $ref: '#/components/schemas/Identifications'
+        name:
+          type: string
+        customerId:
+          type: string
+          format: uuid
+        accountId:
+          type: string
+          format: uuid
+        orderId:
+          type: string
+          format: uuid
+        active:
+          type: boolean
     AccountHolderVerificationDetails:
       type: object
       properties:
@@ -1269,6 +1639,75 @@ components:
           $ref: '#/components/schemas/OutgoingTransactionRequestBeneficiaryTrustedAccount'
         communication:
           $ref: '#/components/schemas/Communication'
+    AliasOrderDetails:
+      type: object
+      description: Alias order status and details.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier of the alias order
+        accountId:
+          type: string
+          format: uuid
+          description: Unique identifier of the account the aliases are assigned to
+        status:
+          $ref: '#/components/schemas/AliasOrderStatusEnum'
+        requested:
+          type: integer
+          description: Total number of aliases requested
+        completed:
+          type: integer
+          description: Number of aliases successfully created so far
+        createdAt:
+          type: string
+          format: date-time
+          description: Timestamp when the order was created
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Timestamp when the order reached a terminal state
+        _links:
+          $ref: '#/components/schemas/AliasOrderLinks'
+    AliasOrderLinks:
+      type: object
+      properties:
+        self:
+          $ref: '#/components/schemas/LinkObject'
+        aliases:
+          $ref: '#/components/schemas/LinkObject'
+    AliasOrderStatusEnum:
+      type: string
+      description: Current status of the alias order
+      enum:
+        - PROCESSING
+        - COMPLETED
+        - FAILED
+    AliasesOrderRequest:
+      type: object
+      properties:
+        accountId:
+          type: string
+          format: uuid
+          description: The unique identifier of the account.
+        count:
+          type: integer
+          minimum: 1
+          maximum: 1000
+          description: Number of aliases to create.
+        communication:
+          $ref: '#/components/schemas/Communication'
+      required:
+        - accountId
+        - count
+    ChangeAliasStateRequest:
+      type: object
+      properties:
+        active:
+          type: boolean
+      required:
+        - active
     NamedAccountOrderRequest:
       type: object
       description: Request to create a named account from an approved onboarding.
@@ -1378,14 +1817,10 @@ components:
       type: object
       description: Account alias details associated with the transaction.
       properties:
-        accountIdentifiers:
-          $ref: "accounts-common.yaml#/components/schemas/AccountIdentifier"
-        aliasId:
+        id:
           type: string
           format: uuid
           example: f47ac10b-58cc-4372-a567-0e02b2c3d479
-      required:
-        - accountIdentifiers
     Identifications:
       description: A list of one or more account identifiers.
       type: array
@@ -1554,6 +1989,11 @@ components:
       properties:
         communication:
           $ref: '#/components/schemas/Communication'
+    AliasCloseRequest:
+      type: object
+      properties:
+        communication:
+          $ref: '#/components/schemas/Communication'
     Communication:
       type: object
       properties:
@@ -1564,7 +2004,7 @@ components:
             url:
               type: string
               pattern: '^https?://[^ ]+$'
-              description: URL where the notifications (webhooks) are going to be sent when the transaction status changes. This value will take precedence over Fuzebox configuration. Provide a value here only if you need to overwrite it.
+              description: 'URL where the notifications (webhooks) are going to be sent when the transaction status changes. This value will take precedence over Fuzebox configuration. Provide a value here only if you need to overwrite it. Note that a default notifications URL must be configured in Fuzebox for notifications to be delivered; if it is not configured, no notification will be sent even when this overwrite URL is provided.'
               example: 'https://mywebsite.com/webhooks'
     OutgoingTransactionRequestBeneficiary:
       type: object
