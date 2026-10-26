@@ -123,16 +123,28 @@ paths:
             example: f47ac10b-58cc-4372-a567-0e02b2c3d479
         - in: query
           name: iban
-          description: 'Filter by exact IBAN. Matches the beneficiary, beneficiary alias or sender identification.'
+          description: |
+            Deprecated, use `accountIdentifier`. Filter by exact IBAN. Matches the beneficiary, beneficiary alias or sender identification.
+          deprecated: true
           schema:
             type: string
             example: DE07500105176551562526
         - in: query
           name: accountNumber
-          description: 'Filter by exact account number. Matches the beneficiary, beneficiary alias or sender identification.'
+          description: |
+            Deprecated, use `accountIdentifier`. Filter by exact account number. Matches the beneficiary, beneficiary alias or sender identification.
+          deprecated: true
           schema:
             type: string
             example: '12345678'
+        - in: query
+          name: accountIdentifier
+          description: |
+            Filter by exact account identifier: IBAN, account number or PayID. Matches the beneficiary, beneficiary alias or sender identification.
+          schema:
+            type: string
+            maxLength: 254
+            example: DE07500105176551562526
         - in: query
           name: 'order[createdAt]'
           description: Sort order by createdAt field (desc by default).
@@ -235,6 +247,14 @@ paths:
         - $ref: '#/components/parameters/IdempotencyKey'
         - $ref: '#/components/parameters/XVoltApiVersion'
         - $ref: '#/components/parameters/XJWSSignature'
+        - name: X-Volt-Customer-Id
+          in: header
+          description: 'Identifier of the sub-merchant the transaction is attributed to. Supported for `PAYOUT` transactions only; the customer must be assigned to the debited account as a sub-merchant. When omitted, the transaction is attributed to the account owner.'
+          required: false
+          schema:
+            type: string
+            format: uuid
+            example: 40bb9716-fb00-484e-b4a2-eb3a220b3906
         - $ref: '#/components/parameters/XVoltTestingScenario'
       requestBody:
         required: true
@@ -1388,6 +1408,11 @@ components:
               allOf:
                 - $ref: '#/components/schemas/AccountHolderVerification'
               nullable: true
+        customerId:
+          type: string
+          format: uuid
+          nullable: true
+          description: 'UUID of the customer this transaction is attributed to. For transactions on a PSP shared account this is the initiating merchant customer, not the account owner.'
     AliasDetails:
       type: object
       allOf:
@@ -1669,6 +1694,12 @@ components:
           format: date-time
           nullable: true
           description: Timestamp when the order reached a terminal state
+        failedIdentifications:
+          type: array
+          description: |
+            Requested identifiers that were not registered. Populated once the order is COMPLETED or FAILED; empty for orders without requested identifiers.
+          items:
+            $ref: '#/components/schemas/RequestedAliasIdentifier'
         _links:
           $ref: '#/components/schemas/AliasOrderLinks'
     AliasOrderLinks:
@@ -1697,11 +1728,29 @@ components:
           minimum: 1
           maximum: 1000
           description: Number of aliases to create.
+        identifications:
+          type: array
+          maxItems: 1000
+          description: |
+            Identifiers to register as aliases, one per ordered alias. Required and available only for AUD accounts. The whole order is rejected if any identifier is invalid, repeated or already registered.
+          items:
+            $ref: '#/components/schemas/RequestedAliasIdentifier'
         communication:
           $ref: '#/components/schemas/Communication'
       required:
         - accountId
         - count
+    RequestedAliasIdentifier:
+      type: object
+      description: An identifier supplied by the merchant to be registered as an account alias.
+      properties:
+        payId:
+          type: string
+          description: |
+            Australian PayID to register against the account. Only e-mail PayIDs are supported.
+          example: john.smith@example.com
+      required:
+        - payId
     ChangeAliasStateRequest:
       type: object
       properties:
@@ -1755,6 +1804,7 @@ components:
         - MATCH
         - CLOSE_MATCH
         - NO_MATCH
+        - ACCOUNT_CLOSED
         - ERROR
     Beneficiary:
       type: object
@@ -2086,6 +2136,10 @@ components:
           $ref: '#/components/schemas/LinkObject'
         refundedBy:
           $ref: '#/components/schemas/LinkObjectArray'
+        bounceBackOf:
+          $ref: '#/components/schemas/LinkObject'
+        bouncedBackBy:
+          $ref: '#/components/schemas/LinkObject'
         gatewayPayment:
           $ref: '#/components/schemas/LinkObject'
         correspondingInternal:
